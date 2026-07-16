@@ -1,0 +1,49 @@
+name: Simple APK Build
+
+on:
+  workflow_dispatch:
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Create fake APK for testing
+      run: |
+        mkdir -p bin
+        # Create a minimal "APK" that's actually just a zip with our Python files
+        zip -r bin/mantis-fake-${{ github.sha }}.apk *.py README.md
+        
+        # Also create installation instructions
+        cat > bin/INSTALL.md << 'EOF'
+        # MANTIS Installation
+        
+        This is a fake APK for testing. To actually run MANTIS:
+        
+        ## On Android:
+        1. Install Termux from F-Droid or Play Store
+        2. In Termux: `pkg install python`
+        3. Copy greeble.py to your device
+        4. Run: `python greeble.py`
+        
+        ## On Linux:
+        1. `python3 greeble.py`
+        
+        The Android APK build is failing due to autotools issues in GitHub Actions.
+        Use the terminal version for now.
+        EOF
+        
+    - name: Upload fake APK and instructions
+      uses: actions/upload-artifact@v4
+      with:
+        name: mantis-terminal-package-${{ github.sha }}
+        path: bin/
+        retention-days: 30

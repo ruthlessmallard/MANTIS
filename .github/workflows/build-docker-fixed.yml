@@ -1,0 +1,54 @@
+name: Build MANTIS (Docker Fixed)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04  # Use older Ubuntu to avoid autotools issues
+    timeout-minutes: 90
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf "/usr/local/share/boost"
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        
+    - name: Build APK with Kivy Buildozer Docker
+      run: |
+        docker pull kivy/buildozer:latest
+        docker run --rm \
+          -v "$PWD":/home/user/hostcwd \
+          -w /home/user/hostcwd \
+          kivy/buildozer:latest \
+          buildozer android debug --verbose
+        
+    - name: List built files
+      run: |
+        find . -name "*.apk" -type f
+        ls -la bin/ 2>/dev/null || echo "No bin directory"
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: mantis-apk-docker-${{ github.sha }}
+        path: "**/*.apk"
+        retention-days: 30
+        
+    - name: Upload debug logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: mantis-build-logs-${{ github.sha }}
+        path: |
+          .buildozer/
+          *.log
+        retention-days: 7
