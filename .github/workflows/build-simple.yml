@@ -1,0 +1,72 @@
+name: Simple MANTIS Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Install system deps
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential git unzip
+        
+    - name: Install Buildozer
+      run: |
+        python -m pip install --upgrade pip wheel setuptools
+        pip install buildozer==1.5.0 cython
+        
+    - name: Prepare build directory
+      run: |
+        mkdir -p .buildozer
+        ls -la
+        
+    - name: Run Buildozer with verbose output
+      run: |
+        buildozer --version
+        buildozer android debug --verbose 2>&1 | tee build.log || echo "Build failed with code $?"
+        
+    - name: Show build log
+      if: always()
+      run: |
+        echo "=== BUILDOZER LOG ==="
+        cat build.log || echo "No build log found"
+        echo "=== END LOG ==="
+        
+    - name: List all files
+      if: always()
+      run: |
+        find . -name "*.apk" -o -name "*.log" -o -name "build.txt" | head -20
+        ls -la .buildozer/ || echo "No .buildozer directory"
+        ls -la bin/ || echo "No bin directory"
+        
+    - name: Upload everything for debugging
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-output-${{ github.run_number }}
+        path: |
+          build.log
+          .buildozer/
+          bin/
+          *.apk
+        retention-days: 7
