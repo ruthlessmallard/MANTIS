@@ -12,6 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     
     steps:
     - name: Checkout repository
@@ -22,54 +23,80 @@ jobs:
       with:
         python-version: '3.11'
         
+    - name: Cache Buildozer global directory
+      uses: actions/cache@v4
+      with:
+        path: ~/.buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+          
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
+          openjdk-11-jdk \
           python3-pip \
           build-essential \
           git \
-          ffmpeg \
-          libsdl2-dev \
-          libsdl2-image-dev \
-          libsdl2-mixer-dev \
-          libsdl2-ttf-dev \
-          libportmidi-dev \
-          libswscale-dev \
-          libavformat-dev \
-          libavcodec-dev \
-          zlib1g-dev \
-          libgstreamer1.0 \
-          gstreamer1.0-plugins-base \
-          gstreamer1.0-plugins-good
+          unzip \
+          libffi-dev \
+          libssl-dev \
+          libbz2-dev \
+          libsqlite3-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libreadline-dev \
+          libgdbm-dev \
+          libdb5.3-dev \
+          liblzma-dev \
+          tk-dev \
+          zip \
+          autoconf \
+          automake \
+          libtool \
+          cmake
           
-    - name: Install Buildozer
+    - name: Set JAVA_HOME
+      run: echo "JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> $GITHUB_ENV
+        
+    - name: Install Buildozer and dependencies
       run: |
+        python -m pip install --upgrade pip
         pip install buildozer cython
         
-    - name: Install Android SDK/NDK
+    - name: Initialize Buildozer (download Android SDK/NDK)
       run: |
-        mkdir -p ~/.buildozer/android/platform
+        buildozer android debug || echo "First run may fail, continuing..."
         
-    - name: Accept Android licenses
+    - name: Accept all Android SDK licenses
       run: |
-        yes | ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --licenses || true
+        yes | $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || \
+        yes | $HOME/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --licenses || \
+        echo "License acceptance completed or not needed"
         
-    - name: Build APK
+    - name: Build APK (second attempt)
       run: |
-        buildozer android debug ||yes | buildozer android debug
+        buildozer android debug
+        
+    - name: List built files
+      run: |
+        find . -name "*.apk" -type f
+        ls -la bin/ || echo "No bin directory found"
         
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
+      if: success()
       with:
-        name: mantis-apk
-        path: bin/*.apk
+        name: mantis-apk-${{ github.sha }}
+        path: "**/*.apk"
+        retention-days: 30
         
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/v')
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        files: bin/*.apk
+        files: "**/*.apk"
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
