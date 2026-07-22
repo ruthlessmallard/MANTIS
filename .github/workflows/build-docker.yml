@@ -1,26 +1,63 @@
-name: Build MANTIS with Docker
+name: Build Greeble Tool APK (Docker)
 
 on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * 0'  # Weekly fallback build
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
+    container:
+      image: kivy/buildozer:latest
+      options: --user root
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
-    - name: Build APK with Docker
+
+    - name: Fix permissions
       run: |
-        docker run --rm -v "$PWD":/home/user/app kivy/buildozer:latest \
-          bash -c "cd /home/user/app && buildozer android debug"
-        
+        mkdir -p /github/home
+        chmod 777 /github/home
+        mkdir -p ~/.buildozer
+        chmod 777 ~/.buildozer
+
+    - name: Cache Buildozer dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          /github/home/.buildozer
+          /root/.buildozer
+        key: ${{ runner.os }}-docker-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-docker-buildozer-
+
+    - name: Build APK with Buildozer
+      run: |
+        buildozer android debug
+      env:
+        HOME: /github/home
+        ANDROIDAPI: 33
+        ANDROIDMINAPI: 21
+
+    - name: Fix APK permissions
+      run: |
+        chmod 644 bin/*.apk || true
+
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: mantis-apk-docker-${{ github.sha }}
-        path: "**/*.apk"
-        retention-days: 30
+        name: greeble-tool-apk-docker
+        path: bin/*.apk
+        if-no-files-found: error
+
+    - name: Upload to Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: bin/*.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }
